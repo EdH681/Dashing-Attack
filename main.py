@@ -9,7 +9,6 @@ class Arena:
         self.width = 1500
         self.height = 750
         self.block = 75
-        self.grid = get_grid()
         self.__display = self.__create()
         img = pygame.image.load("assets/arena/background.png").convert()
         self.background = pygame.transform.scale(img, (1500, 750))
@@ -20,29 +19,24 @@ class Arena:
         win = pygame.display.set_mode((self.width, self.height))
         return win
 
-    def __draw(self):
-        for r, row in enumerate(self.grid):
-            for c, col in enumerate(row):
-                if col == 1:
-                    pygame.draw.rect(self.__display, "white", (c*75, r*75, self.block, self.block))
-
     def get_display(self):
         return self.__display
 
+
     def run(self):
         self.__display.blit(self.background, (0, 0))
-        self.__draw()
 
 
 class Player:
-    def __init__(self, display: pygame.display):
-        self.display = display
+    def __init__(self, arena: Arena):
+        self.display = arena.get_display()
         self.colour = "green"
         self.x = 750
         self.y = 375
         self.y_vel = 0
         self.x_vel = 0
         self.ready = True
+        self.dashing = False
         self.charge = 100
         self.cost = 20
         self.recharge = 1
@@ -99,6 +93,7 @@ class Player:
             self.charge += self.recharge
         self.x_dash /= self.FRICTION
         self.y_dash /= self.FRICTION
+
     def __draw(self):
         pygame.draw.circle(self.display, self.colour, (self.x, self.y), 20)
 
@@ -109,10 +104,34 @@ class Player:
         self.__draw()
 
 
-def get_grid():
-    with open("arena", "rb")as get:
-        data = pickle.load(get)
-    return data
+class Enemy:
+    def __init__(self, arena: Arena):
+        self.display = arena.get_display()
+        self.x = 200
+        self.y = 200
+
+    def __draw(self):
+        pygame.draw.circle(self.display, "red", (self.x, self.y), 10)
+
+    def run(self):
+        self.__draw()
+
+
+class Generator:
+    def __init__(self, limit, arena: Arena):
+        self.limit = limit
+        self.arena = arena
+        self.enemies = []
+
+    def __generate(self):
+        if len(self.enemies) < self.limit:
+            enemy = Enemy(self.arena)
+            self.enemies.append(enemy)
+
+    def run(self):
+        self.__generate()
+        for enemy in self.enemies:
+            enemy.run()
 
 
 def runtime(func):
@@ -127,9 +146,8 @@ def runtime(func):
 @runtime
 def run():
     arena = Arena()
-    win = arena.get_display()
-    player = Player(win)
-
+    player = Player(arena)
+    generator = Generator(1, arena)
     clock = pygame.time.Clock()
 
     running = True
@@ -138,6 +156,7 @@ def run():
         ##
         arena.run()
         player.run()
+        generator.run()
         ##
         pygame.display.update()
         for event in pygame.event.get():
