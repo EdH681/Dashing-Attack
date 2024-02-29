@@ -1,7 +1,7 @@
 import pygame
-import pickle
 import time
 import math
+import random
 
 
 class Arena:
@@ -22,14 +22,14 @@ class Arena:
     def get_display(self):
         return self.__display
 
-
     def run(self):
         self.__display.blit(self.background, (0, 0))
 
 
 class Player:
-    def __init__(self, arena: Arena):
+    def __init__(self, arena: Arena, enemies: list):
         self.display = arena.get_display()
+        self.enemies = enemies
         self.colour = "green"
         self.x = 750
         self.y = 375
@@ -38,8 +38,8 @@ class Player:
         self.ready = True
         self.dashing = False
         self.charge = 100
-        self.cost = 20
-        self.recharge = 1
+        self.cost = 50
+        self.recharge = 0.1
         self.x_dash = 0
         self.y_dash = 0
         self.DASH = 50
@@ -80,7 +80,7 @@ class Player:
         if math.fabs(self.y_dash) < 0.1:
             self.y_dash = 0
 
-        if pygame.key.get_pressed()[pygame.K_SPACE] and self.ready:
+        if pygame.key.get_pressed()[pygame.K_SPACE] and self.ready and self.charge > self.cost:
             self.colour = "red"
             self.x_dash = x_unit * self.DASH
             self.y_dash = y_unit * self.DASH
@@ -94,44 +94,99 @@ class Player:
         self.x_dash /= self.FRICTION
         self.y_dash /= self.FRICTION
 
+    def __charge_bar(self):
+        icon = pygame.image.load("assets/UI/stamina.png")
+        segment = pygame.image.load("assets/UI/segment.png")
+        charge = (math.floor(self.charge)//10)
+        for i in range(charge):
+            self.display.blit(segment, (60+(i*40), 50))
+        self.display.blit(icon, (10, 10))
+
     def __draw(self):
         pygame.draw.circle(self.display, self.colour, (self.x, self.y), 20)
 
-    def run(self):
+    def pos(self):
+        return self.x, self.y
+
+    def run(self, enemies):
 
         self.__move()
         self.__dash()
         self.__draw()
+        self.__charge_bar()
 
 
 class Enemy:
-    def __init__(self, arena: Arena):
+    def __init__(self, arena: Arena, player: Player):
         self.display = arena.get_display()
-        self.x = 200
-        self.y = 200
+        self.target = player
+        self.others = []
+        self.error = random.randint(1, 150)
+        self.x = random.randint(100, 1400)
+        self.y = random.randint(100, 650)
+        self.vel = 3
+
+    def __track(self):
+        target_x = self.target.pos()[0]
+        target_y = self.target.pos()[1]
+        x_difference = (target_x - self.x)
+        y_difference = (target_y - self.y)
+        magnitude = math.sqrt(x_difference**2 + y_difference**2)
+        try:
+            x_unit = x_difference/magnitude
+            y_unit = y_difference/magnitude
+        except ZeroDivisionError:
+            x_unit, y_unit = 0, 0
+        self.x += x_unit * self.vel
+        self.y += y_unit * self.vel
+
+    def __avoidance(self):
+        for o in self.others:
+            bot_x, bot_y = o.pos()
+            x_change = bot_x - self.x
+            y_change = bot_y - self.y
+            distance = math.sqrt(x_change**2 + y_change**2)
+            try:
+                x_unit = x_change/distance
+                y_unit = y_change/distance
+            except ZeroDivisionError:
+                x_unit, y_unit = 0, 0
+            if distance < 20:
+                self.x -= x_unit * self.vel * 3
+                self.y -= y_unit * self.vel * 3
 
     def __draw(self):
         pygame.draw.circle(self.display, "red", (self.x, self.y), 10)
 
-    def run(self):
+    def pos(self):
+        return self.x, self.y
+
+    def run(self, others):
+        self.others = others
+        self.__track()
+        self.__avoidance()
         self.__draw()
 
 
 class Generator:
-    def __init__(self, limit, arena: Arena):
+    def __init__(self, limit, arena: Arena, player: Player):
         self.limit = limit
         self.arena = arena
+        self.player = player
         self.enemies = []
 
     def __generate(self):
         if len(self.enemies) < self.limit:
-            enemy = Enemy(self.arena)
+            enemy = Enemy(self.arena, self.player)
             self.enemies.append(enemy)
+
+    def get(self):
+        return self.enemies
 
     def run(self):
         self.__generate()
         for enemy in self.enemies:
-            enemy.run()
+            enemy.run(self.enemies)
 
 
 def runtime(func):
@@ -145,9 +200,10 @@ def runtime(func):
 
 @runtime
 def run():
+    enemies = []
     arena = Arena()
-    player = Player(arena)
-    generator = Generator(1, arena)
+    player = Player(arena, enemies)
+    generator = Generator(1, arena, player)
     clock = pygame.time.Clock()
 
     running = True
@@ -155,8 +211,9 @@ def run():
         clock.tick(60)
         ##
         arena.run()
-        player.run()
+        player.run(enemies)
         generator.run()
+        enemies = generator.get()
         ##
         pygame.display.update()
         for event in pygame.event.get():
